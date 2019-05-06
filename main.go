@@ -31,6 +31,16 @@ func run() error {
 	log.SetFlags(0)
 	log.SetPrefix(fmt.Sprintf("%s: ", filepath.Base(os.Args[0])))
 
+	flexecConfig := helper.NewFlexecConfig()
+	if err := helper.ReadFlexecConfig(flexecConfig); err != nil {
+		return errors.Wrap(err, "load flexexec config")
+	}
+	defer func() {
+		if err := helper.WriteFlexecConfig(flexecConfig); err != nil {
+			log.Printf("note: error: write flexec config: %s", err.Error())
+		}
+	}()
+
 	taskName := os.Args[1]
 	taskConfigPath := filepath.Join(
 		os.Getenv("HOME"),
@@ -57,7 +67,11 @@ func run() error {
 	if err := resolveOutputs(&taskConfig, cmdBuilder.OnOutput); err != nil {
 		return errors.Wrap(err, "resolve outputs")
 	}
-	if err := resolveParams(&taskConfig, cmdBuilder.OnParam); err != nil {
+	if err := resolveParams(
+		&taskConfig,
+		flexecConfig.ParamDefaults,
+		cmdBuilder.OnParam,
+	); err != nil {
 		return errors.Wrap(err, "resolve params")
 	}
 
@@ -65,7 +79,7 @@ func run() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	log.Printf("running command: \n%s  ", cmdBuilder.String())
+	log.Printf("running command: \n  %s", cmdBuilder.String())
 	if err := cmd.Run(); err != nil {
 		return errors.Wrap(err, "run command")
 	}
@@ -119,15 +133,27 @@ func resolveOutputs(config *helper.TaskConfig, handler func(name, path string)) 
 	return nil
 }
 
-func resolveParams(config *helper.TaskConfig, handler func(paramKey, paramValue string)) error {
+func resolveParams(
+	config *helper.TaskConfig,
+	defaults map[string]string,
+	handler func(paramKey, paramValue string),
+) error {
 	for paramKey, paramValue := range config.Params {
 		if paramValue == "" {
-			fmt.Printf("enter value for param %s: ", paramKey)
+			fmt.Printf(
+				"enter value for param %s (default '%s'): ",
+				paramKey,
+				defaults[paramKey],
+			)
 			text, err := bufio.NewReader(os.Stdin).ReadString('\n')
 			if err != nil {
 				return errors.Wrap(err, "read string from stdin")
 			}
 			paramValue = strings.TrimSpace(text)
+			if len(paramValue) == 0 {
+				paramValue = defaults[paramKey]
+			}
+			defaults[paramKey] = paramValue
 		}
 
 		log.Printf("setting param: %s => %s", paramKey, paramValue)
