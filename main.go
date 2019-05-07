@@ -11,9 +11,10 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	yaml "gopkg.in/yaml.v1"
 
+	"github.com/ankeesler/flexec/config"
 	"github.com/ankeesler/flexec/helper"
+	"github.com/ankeesler/flexec/task"
 )
 
 func main() {
@@ -31,18 +32,18 @@ func run() error {
 	log.SetFlags(0)
 	log.SetPrefix(fmt.Sprintf("%s: ", filepath.Base(os.Args[0])))
 
-	flexecConfig := helper.NewFlexecConfig()
-	if err := helper.ReadFlexecConfig(flexecConfig); err != nil {
+	flexecConfig, err := config.Read(os.Getenv("HOME"))
+	if err != nil {
 		return errors.Wrap(err, "load flexexec config")
 	}
 	defer func() {
-		if err := helper.WriteFlexecConfig(flexecConfig); err != nil {
+		if err := config.Write(os.Getenv("HOME"), flexecConfig); err != nil {
 			log.Printf("note: error: write flexec config: %s", err.Error())
 		}
 	}()
 
 	taskName := os.Args[1]
-	taskConfigPath := filepath.Join(
+	taskPath := filepath.Join(
 		os.Getenv("HOME"),
 		"workspace",
 		"credhub-ci",
@@ -50,17 +51,12 @@ func run() error {
 		taskName,
 		"task.yml",
 	)
-	taskConfigData, err := getTaskConfigData(taskConfigPath)
+	task, err := task.Read(taskPath)
 	if err != nil {
-		return errors.Wrap(err, "get task config data")
+		return errors.Wrap(err, "read task")
 	}
 
-	var taskConfig helper.TaskConfig
-	if err := yaml.Unmarshal(taskConfigData, &taskConfig); err != nil {
-		return errors.Wrap(err, "unmarshal task config yaml")
-	}
-
-	cmdBuilder := helper.NewCmdBuilder(taskConfigPath)
+	cmdBuilder := helper.NewCmdBuilder(taskPath)
 	if err := resolveInputs(&taskConfig, cmdBuilder.OnInput); err != nil {
 		return errors.Wrap(err, "resolve inputs")
 	}
