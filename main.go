@@ -61,11 +61,7 @@ func run() error {
 	}
 
 	cmdBuilder := helper.NewCmdBuilder(taskConfigPath)
-	if err := resolveInputs(
-		&taskConfig,
-		flexecConfig.ParamDefaults,
-		cmdBuilder.OnInput,
-	); err != nil {
+	if err := resolveInputs(&taskConfig, cmdBuilder.OnInput); err != nil {
 		return errors.Wrap(err, "resolve inputs")
 	}
 	if err := resolveOutputs(&taskConfig, cmdBuilder.OnOutput); err != nil {
@@ -102,11 +98,7 @@ func getTaskConfigData(taskConfigPath string) ([]byte, error) {
 	return taskConfigData, nil
 }
 
-func resolveInputs(
-	config *helper.TaskConfig,
-	defaults map[string]string,
-	handler func(name, path string),
-) error {
+func resolveInputs(config *helper.TaskConfig, handler func(name, path string)) error {
 	for _, inputMap := range config.Inputs {
 		input, ok := inputMap["name"]
 		if !ok {
@@ -115,26 +107,11 @@ func resolveInputs(
 
 		path, ok := resolveRepo(input)
 		if !ok {
-			fmt.Printf(
-				"enter value for input %s (default '%s'): ",
-				input,
-				defaults[input],
-			)
-			text, err := bufio.NewReader(os.Stdin).ReadString('\n')
-			if err != nil {
-				return errors.Wrap(err, "read string from stdin")
+			path = fmt.Sprintf("/tmp/%s", input)
+			if err := os.MkdirAll(path, 0700); err != nil {
+				return errors.Wrap(err, fmt.Sprintf("mkdir (%s)", path))
 			}
-			path = strings.TrimSpace(text)
-			if len(path) == 0 {
-				path = defaults[input]
-			}
-			defaults[input] = path
-
-			//path = fmt.Sprintf("/tmp/%s", input)
-			//if err := os.MkdirAll(path, 0700); err != nil {
-			//	return errors.Wrap(err, fmt.Sprintf("mkdir (%s)", path))
-			//}
-			//log.Printf("cannot resolve repo for input %s", input)
+			log.Printf("cannot resolve repo for input %s", input)
 		}
 		log.Printf("resolved input %s to path %s", input, path)
 		handler(input, path)
