@@ -15,6 +15,7 @@ import (
 	"github.com/ankeesler/flexec/config"
 	"github.com/ankeesler/flexec/helper"
 	"github.com/ankeesler/flexec/task"
+	"github.com/concourse/concourse/atc"
 )
 
 func main() {
@@ -57,14 +58,14 @@ func run() error {
 	}
 
 	cmdBuilder := helper.NewCmdBuilder(taskPath)
-	if err := resolveInputs(&taskConfig, cmdBuilder.OnInput); err != nil {
+	if err := resolveInputs(task, cmdBuilder.OnInput); err != nil {
 		return errors.Wrap(err, "resolve inputs")
 	}
-	if err := resolveOutputs(&taskConfig, cmdBuilder.OnOutput); err != nil {
+	if err := resolveOutputs(task, cmdBuilder.OnOutput); err != nil {
 		return errors.Wrap(err, "resolve outputs")
 	}
 	if err := resolveParams(
-		&taskConfig,
+		task,
 		flexecConfig.ParamDefaults,
 		cmdBuilder.OnParam,
 	); err != nil {
@@ -94,47 +95,37 @@ func getTaskConfigData(taskConfigPath string) ([]byte, error) {
 	return taskConfigData, nil
 }
 
-func resolveInputs(config *helper.TaskConfig, handler func(name, path string)) error {
-	for _, inputMap := range config.Inputs {
-		input, ok := inputMap["name"]
+func resolveInputs(task *atc.TaskConfig, handler func(name, path string)) error {
+	for _, input := range task.Inputs {
+		path, ok := resolveRepo(input.Name)
 		if !ok {
-			return fmt.Errorf("input map does not contain name: %s", inputMap)
-		}
-
-		path, ok := resolveRepo(input)
-		if !ok {
-			path = fmt.Sprintf("/tmp/%s", input)
+			path = fmt.Sprintf("/tmp/%s", input.Name)
 			if err := os.MkdirAll(path, 0700); err != nil {
 				return errors.Wrap(err, fmt.Sprintf("mkdir (%s)", path))
 			}
-			log.Printf("cannot resolve repo for input %s", input)
+			log.Printf("cannot resolve repo for input %s", input.Name)
 		}
-		log.Printf("resolved input %s to path %s", input, path)
-		handler(input, path)
+		log.Printf("resolved input %s to path %s", input.Name, path)
+		handler(input.Name, path)
 	}
 	return nil
 }
 
-func resolveOutputs(config *helper.TaskConfig, handler func(name, path string)) error {
-	for _, outputMap := range config.Outputs {
-		output, ok := outputMap["name"]
-		if !ok {
-			return fmt.Errorf("output map does not contain name: %s", outputMap)
-		}
-
-		path := fmt.Sprintf("/tmp/%s", output)
-		log.Printf("resolved output %s to path %s", output, path)
-		handler(output, path)
+func resolveOutputs(task *atc.TaskConfig, handler func(name, path string)) error {
+	for _, output := range task.Outputs {
+		path := fmt.Sprintf("/tmp/%s", output.Name)
+		log.Printf("resolved output %s to path %s", output.Name, path)
+		handler(output.Name, path)
 	}
 	return nil
 }
 
 func resolveParams(
-	config *helper.TaskConfig,
+	task *atc.TaskConfig,
 	defaults map[string]string,
 	handler func(paramKey, paramValue string),
 ) error {
-	for paramKey, paramValue := range config.Params {
+	for paramKey, paramValue := range task.Params {
 		if paramValue == "" {
 			fmt.Printf(
 				"enter value for param %s (default '%s'): ",
