@@ -30,3 +30,7 @@ executing build 81827 at https://credhub.ci.cf-app.com/builds/81827
 initializing
 ...
 ```
+
+# TODO
+- allow users to override input directory if can't be found on disk
+- allow users to override param option even if there is a default
